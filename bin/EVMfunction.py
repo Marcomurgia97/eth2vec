@@ -1,34 +1,46 @@
 import json
 import sys
 
-def get_ordered_ast(ast, contract_count, if_pragma):
+def get_ordered_ast(ast, contract_count, if_pragma,version):
     ast_dict = dict()
     ast_dict['Contracts'] = list()
+   
     for i in range(contract_count):
-        parent_ast = ast['children'][i+int(if_pragma)]
-        if parent_ast['name'] == 'PragmaDirective':
-            continue
+        
+        parent_ast = ast['nodes'][i+int(if_pragma)]
+
+        #info=ast['nodes'][i+int(if_pragma)]
+        if('name' in parent_ast.keys()):                
+            if parent_ast['name'] == 'PragmaDirective':
+                continue
+        else:
+             if parent_ast['nodeType'] == 'PragmaDirective':
+                continue
         cont_info = get_cont_info(parent_ast)
         cont_info['Variables'] = list()
         cont_info['Events'] = list()
         cont_info['Functions'] = list()
-        child_ast = parent_ast.get('children')
+        child_ast = parent_ast.get('nodes')
+
         if child_ast != None:
-            for child in child_ast:
-                if child['name'] == 'VariableDeclaration':
+            for child in child_ast:                       
+
+                if child['nodeType'] == 'VariableDeclaration':
                     variables = get_var_info(child)
                     cont_info['Variables'].append(variables)
-                elif child['name'] == 'EventDefinition':
+                elif child['nodeType'] == 'EventDefinition':
                     events = get_event_info(child)
                     cont_info['Events'].append(events)
-                elif child['name'] == 'FunctionDefinition':
-                    functions = get_func_info(child)
+                elif child['nodeType'] == 'FunctionDefinition':
+                    functions = get_func_info(child,version)
                     cont_info['Functions'].append(functions)
             ast_dict['Contracts'].append(cont_info)
     return ast_dict
 
 def get_cont_info(cont_ast):
-    cont_attributes = cont_ast['attributes']
+  
+    cont_attributes = cont_ast#['attributes']
+    
     cont_info = dict()
     cont_info['name'] = cont_attributes['name']
     cont_info['dependencies'] = cont_attributes['contractDependencies']
@@ -38,21 +50,21 @@ def get_cont_info(cont_ast):
     return cont_info
 
 def get_var_info(var_ast):
-    var_attributes = var_ast['attributes']
+    var_attributes = var_ast#['attributes']
     var_info = dict()
     var_info['isConstant'] = var_attributes['constant']
     var_info['visibility'] = var_attributes['visibility']
-    var_info['type'] = var_attributes['type']
+    var_info['type'] = var_attributes['typeDescriptions']
     var_info.update(get_range(var_ast))
     return var_info
 
 def get_event_info(event_ast):
-    event_attributes = event_ast['attributes']
+    event_attributes = event_ast#['attributes']
     event_info = dict()
     event_info['parameters'] = list()
-    param_ast = event_ast.get('children')
+    param_ast = event_ast.get('nodes')
     if param_ast != None:
-        var_ast = param_ast[0].get('children')
+        var_ast = param_ast[0].get('nodes')
         if var_ast != None:
             for v in var_ast:
                 event_info['parameters'].append(get_var_info(v))
@@ -64,16 +76,18 @@ def get_event_info(event_ast):
     event_info.update(get_range(event_ast))
     return event_info
 
-def get_func_info(func_ast):
-    func_attributes = func_ast['attributes']
+def get_func_info(func_ast,version):
+    func_attributes = func_ast#['attributes']
     func_info = dict()
-    func_info['isConstant'] = func_attributes['constant']
+    if version <0.5:
+     func_info['isConstant'] = func_attributes['isDeclaredConst']
+     func_info['superFunction'] = func_attributes['superFunction']
+     func_info['isConstructor'] = func_attributes['isConstructor']
+
     func_info['visibility'] = func_attributes['visibility']
-    func_info['superFunction'] = func_attributes['superFunction']
-    func_info['isConstructor'] = func_attributes['isConstructor']
     func_info['Parameters'] = list()
     func_info['Variables'] = list()
-    child_ast = func_ast.get('children')
+    child_ast = func_ast.get('nodes')
     if child_ast != None:
         for child in child_ast:
             if child['name'] == 'VariableDeclaration':
@@ -111,13 +125,16 @@ def count_address(asm_dict, address, bin):
             address += (len(asm_dict['value'])+1) // 2
         elif asm_dict['name'] == 'PUSH [tag]':
             add = bin[begin:begin+2]
-            address += int(add, 16)-sixty+1
+            if(add!=''):
+                address += int(add, 16)-sixty+1
         elif asm_dict['name'] == 'PUSHSIZE':
             add = bin[begin:begin+2]
-            address += int(add, 16)-sixty+1
+            if(add!=''):
+                address += int(add, 16)-sixty+1
         elif asm_dict['name'] == 'PUSH [$]' or asm_dict['name'] == 'PUSH #[$]':
             add = bin[begin:begin+2]
-            address += int(add, 16)-sixty+1
+            if(add!=''):
+                address += int(add, 16)-sixty+1
         elif asm_dict['name'] == 'PUSHDEPLOYADDRESS':
             address += 20
         elif asm_dict['name'] == 'PUSHLIB':
@@ -176,17 +193,19 @@ def set_contract(data, cont_info, address):
     data['contracts'].append(contract)
     return contract
 
-def set_function(contract, func_info, address):
+def set_function(contract, func_info, address,version):
     function = dict()
     function['name'] = func_info['name']
     function['sea'] = address
     function['see'] = -1
     function['id'] = address
     function['call'] = list()
-    function['isConstant'] = func_info['isConstant']
+    if version <0.5:
+       function['isConstant'] = func_info['isConstant']
+       function['superFunction'] = func_info['superFunction']
+       function['isConstructor'] = func_info['isConstructor']
+
     function['visibility'] = func_info['visibility']
-    function['superFunction'] = func_info['superFunction']
-    function['isConstructor'] = func_info['isConstructor']
     function['parameters'] = func_info['Parameters']
     function['variables'] = func_info['Variables']
     function['vulnerabilities'] = list()
@@ -220,7 +239,7 @@ def search_current_cont_from_asm(asm, data_info, data, prev_cont, address):
             return (contract, cont_info)
     return (None, None)
 
-def search_current_func_from_asm(asm, cont_info, contract, prev_func, address):
+def search_current_func_from_asm(asm, cont_info, contract, prev_func, address,version):
     if prev_func != None:
         prev_func['see'] = address
         #prev_func['blocks'][-1]['see'] = address
@@ -237,7 +256,7 @@ def search_current_func_from_asm(asm, cont_info, contract, prev_func, address):
             function = if_already_saved(contract['functions'], func_info['name'])
             if function == None:
                 #create a new function
-                function = set_function(contract, func_info, address)
+                function = set_function(contract, func_info, address,version)
             return function
     return None
 
@@ -268,21 +287,22 @@ def set_src(address, name, value):
         src.append(value)
     return src
 
-def call_parse(data, asm, ast, cont_name, address, id, callee, bin, prev_cont, prev_func, prev_block, depth):
+def call_parse(data, asm, ast, cont_name, address, id, callee, bin, prev_cont, prev_func, prev_block, depth,version):
     code = asm['.code']
     if depth > 0:
         address += 1
     (prev_cont, prev_func, prev_block, address, id, bin) = parse(
-    data, code, ast, cont_name, address, id, callee, bin, prev_cont, prev_func, prev_block)
+    data, code, ast, cont_name, address, id, callee, bin, prev_cont, prev_func, prev_block,version)
     depth += 1
     if asm.get('.data') != None:
         for next_asm in asm['.data'].values():
             (prev_cont, prev_func, prev_block, address, id, bin) = call_parse(
-            data, next_asm, ast, cont_name, address, id, callee, bin, prev_cont, prev_func, prev_block, depth)
+            data, next_asm, ast, cont_name, address, id, callee, bin, prev_cont, prev_func, prev_block, depth,version)
     return (prev_cont, prev_func, prev_block, address, id, bin)
 
-def parse(data, asm_list, ast, cont_name, address, id, callee, bin, prev_cont, prev_func, prev_block):
+def parse(data, asm_list, ast, cont_name, address, id, callee, bin, prev_cont, prev_func, prev_block,version):
     data_info = ast['Contracts']
+  
     contract = prev_cont
     function = prev_func
     block = prev_block
@@ -292,7 +312,7 @@ def parse(data, asm_list, ast, cont_name, address, id, callee, bin, prev_cont, p
         asm = asm_list.pop(0)
         (contract, cont_info) = search_current_cont_from_asm(asm, data_info, data, contract, address)
         if contract != None:
-            function = search_current_func_from_asm(asm, cont_info, contract, function, address)
+            function = search_current_func_from_asm(asm, cont_info, contract, function, address,version)
             if function != None:
                 if block != None:
                     block['see'] = address
@@ -309,7 +329,7 @@ def parse(data, asm_list, ast, cont_name, address, id, callee, bin, prev_cont, p
         #get the current function/block
         (contract, cont_info) = search_current_cont_from_asm(asm, data_info, data, contract, address)
         if contract != None:
-            function = search_current_func_from_asm(asm, cont_info, contract, function, address)
+            function = search_current_func_from_asm(asm, cont_info, contract, function, address,version)
             if function != None:
                 (block, id) = search_current_block_from_asm(asm, function, block, address, id, callee)
         #count the current address
@@ -357,6 +377,7 @@ def get_call(data, callee, end_address):
 def get_json(file):
     with open(file, 'r', encoding="utf-8") as f:
         json_file = f.read()
+
         return json.loads(json_file)
 
 def labeling(file_name, data, label):

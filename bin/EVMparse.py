@@ -30,8 +30,13 @@ def get_code_information(file_name_list):
         #print('read %s' % contract_name_list[contract_count])
         remove_byte_list = list()
         asm_file = file_name + '.asm.json'
-        asm_tmp = EVMf.get_json(asm_file)
-        os.remove(asm_file)
+
+        try:
+            asm_tmp = EVMf.get_json(asm_file)
+            os.remove(asm_file)
+        except:
+            print('missing asm file '+ asm_file)
+            continue
         if asm_tmp != None:
             (depth, remove_byte_list) = extract_code(asm_tmp, depth, remove_byte_list)
         asm.append(asm_tmp)
