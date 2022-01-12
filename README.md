@@ -28,9 +28,10 @@ You need to install Kam1n0 server before installing Eth2Vec.
 10. Rebuild Kam1n0 with the copied files of Eth2Vec.
 11. Run a main method in `Kam1n0-Community/kam1n0/kam1n0-cli/src/main/java/ca/mcgill/sis/dmas/kam1n0/cli/Main.java` with an argment `--start`.
 
-###Vulnerabilities detection
+### Vulnerabilities detection
 We added the file assignVuln.py that takes in input the Kam1no output and assign the related vulnerabilities.
-###EVM Extractor Update
+
+### EVM Extractor Update
 We have updated the files corresponding to the EVM extractor,because  some dictionary key were deprecated. 
 For examples we substituded the key 'children' with the key 'node', and the key 'constat' with 'isConstant'.
 Also we test Eth2Vec with more recent Solidity contracts , pragma 0.8.0, and in order to parse correctly the input contract
